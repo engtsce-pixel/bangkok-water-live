@@ -18,6 +18,6 @@ Static HTML/CSS/JavaScript; no build step or application server required.
 
 See [INTEGRATION.md](INTEGRATION.md) for source provenance, telemetry adapter requirements, units, timestamps, quality flags and free service constraints.
 
-Deploy all web files to the existing Cloudflare worker `bangkok-water-live-v4`, preserving the existing URL. The source snapshot is at the repository root (`stations.json`). Do not deploy the old V4 source over V5.
+Deploy with `npx wrangler deploy` to the existing Cloudflare worker `bangkok-water-live-v4`, preserving the existing URL. The explicit `wrangler.jsonc` prevents the root runtime `config.json` from being mistaken for a Hugo project. Static assets come from the repository root; `.assetsignore` excludes repository/tooling files and Markdown documentation. The source snapshot is `stations.json`. No build command is needed.
 
 Local preview: serve this directory with any static HTTP server, then open it in a browser. ES modules require HTTP rather than opening index.html as a local file.
