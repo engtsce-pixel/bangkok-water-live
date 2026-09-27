@@ -1,49 +1,47 @@
-# Bangkok Water Live V5 — integration contract
+# V5 live-source integration
 
-The shipped site contains no fabricated observations. `config.json` starts with `telemetryUrl: null`.
-To connect BMA or ThaiWater, implement a same-origin endpoint (for example `/api/observations`) and set `telemetryUrl` to that path. Keep provider credentials server-side. Do not put secrets in config.json or any static asset.
+## Architecture
 
-The endpoint returns an object with optional `waterLevel` and `rainfall` objects. Each needs:
+Cloudflare worker.mjs exposes GET-only fixed paths, with no arbitrary upstream URL, credentials, writes to equipment, or authentication bypass. Assets are served independently. Source errors return missing/unavailable, never fabricated zero values. Fixed API routes: /api/live, /api/history, /api/pumps, /api/cameras, /api/upstream-forecast.
 
-- `kind`: `waterLevel` or `rainfall`, matching its parent key
-- `station`: actual station name (each card represents that station, not all Bangkok)
-- `value`: finite measured number; missing data must be null, never zero
-- `unit`: `m` for waterLevel, `mm` for rainfall
-- `observedAt`: ISO-8601 timestamp including Z or explicit offset
-- `source`: provider name
-- `sourceUrl`: HTTPS provider reference
-- `quality`: `verified` only after the adapter checks the provider's quality flags
-- waterLevel additionally requires `datum` (actual vertical reference)
-- rainfall additionally requires `periodMinutes` (actual accumulation interval)
+## ThaiWater
 
-Do not copy control/warning/critical infrastructure thresholds into measurements. Do not mark forecast values as observations. Map raw provider field names and quality conventions after checking the actual provider documentation; ThaiWater's standard documentation is not a universal live endpoint. A bare schema-valid object does not independently prove data authenticity: the server-side adapter must perform provenance and quality checks.
+Public base: https://api-v3.thaiwater.net/api/v1/thaiwater30/public/
 
-The UI rejects missing units, missing timestamps, unsupported quality and future times (>1 minute), labels observations older than 15 minutes as old, and clears invalid data. This 15-minute display policy is not a hydrological validity standard.
+Endpoints verified against the official ThaiWater frontend at https://www.thaiwater.net/dist/js/app.chunk.js and actual responses:
 
-Forecast: Open-Meteo Best Match hourly precipitation at Bangkok center. Values are previous-hour totals at the supplied end timestamps. Three consecutive ending hours are shown; the first may start before the current time. Not radar nowcasting, not drainage/flood prediction, not an operational pump/gate recommendation. No synthetic forecast fallback. Data retrieval time is not a model issue time.
+- waterlevel_load: waterlevel_data.data, station.tele_station_*, waterlevel_msl, waterlevel_datetime. Unit m MSL. situation_level labels follow the provider scale (1 low-critical, 2 low, 3 normal, 4 high, 5 overflowing).
+- canal_waterlevel: canal_value, canal_datetime, station.canal_*, warning_level/critical_level, unit m MSL.
+- rain_24h?province_code=10,11,12,13,73,74: rain_24h in mm over prior 24 hours ending at rainfall_datetime. Keep Bangkok province_code 10 only.
+- flow: flow_value in m³/s, flow_datetime and station.flow_*. Single-point flow is not city-wide total or pump capacity.
+- flood_road: source unit is inconsistent in the official frontend. The dashboard therefore shows only source zero/positive reports with station and timestamp, not inferred centimetres, flood depth, safety or forecast risk.
+- waterlevel_graph: station_type canal or tele_waterlevel, positive numeric station_id, server-generated last-24-hour start_date/end_date. graph_data.datetime/value. Reject null/sentinel points and duplicate times. Break chart lines across gaps over 30 minutes.
 
-Stations: BMA infrastructure dataset distributed by DDPM GIS. Fetch every approximately five minutes; if unavailable, show the shipped, date-labelled snapshot. Original 438 records include 9 without usable coordinates; 429 are mappable. Identical names/coordinates with different provider IDs are retained. District names and physical fields are retained as supplied, including source typos; units/datum must be verified before operational use.
+Times without offsets in these public responses are parsed as Asia/Bangkok (+07:00), consistent with the public display. Missing values, -999/9999/999999, invalid coordinates, future times beyond one minute and records older than 24 hours are excluded. Values older than 15 minutes are visibly old. Fifteen minutes is this dashboard's freshness policy, not a source guarantee. The API does not supply a per-row quality approval flag; the interface explicitly states source publication rather than independently verified measurements.
 
-Radar: RainViewer public Weather Maps API supplies historical frames and a coverage mask. Its frame timestamps describe composite frame generation, not every underlying radar observation. Tiles are limited to native zoom 7; the map enlarges them when zoomed further. Radar imagery is qualitative here; the UI does not convert colors to measured local rain amounts. Frame age and fetch age are separately labelled. No fabricated future radar frames. RainViewer data has no availability guarantee; an empty area is not proof of no rain. This personal/community, non-commercial project uses the free public API with visible attribution.
+The worker filters live API data to Bangkok before cache/response. It does not persist observations or fabricate historical series. A failed source does not hide successful independent sources.
 
-CCTV remains official source links, not embedded live streams. No sample photography is substituted for live cameras. Verify actual stream endpoints and embedding permission before implementation.
+## BMA machines and gates
 
-District precipitation: the app selects an actual infrastructure station coordinate in each of five named districts from the official station records, then requests Open-Meteo at those coordinates. The station name and coordinates identify the point; the result is not a district mean. The table and map support a total of three hourly periods or a selected period. No rainfall-to-flood classification or water-volume calculation is performed.
+Official read-only endpoints found in public page code:
+- https://weather.bangkok.go.th/Pump/Map/GetData?id=0
+- https://weather.bangkok.go.th/Station/Map/GetData?id=0
 
-Water history: the same-origin telemetry endpoint may additionally return `waterHistory`, an array of objects using the waterLevel observation schema above. Display is limited to the last 24 hours; only entries sharing the latest valid entry's station and datum are shown. Duplicate times are omitted; gaps over 30 minutes break the connecting line. At least two valid observations are needed. An old last observation is labelled. The chart contains no extrapolated future points.
+Only a fixed allowlist of public fields is returned: station ID/name/code/district/coordinates, pump count, capacity metadata, observation timestamp, RTU connection, per-machine status/trip and gate opening. Microsoft /Date(epochMillis)/ is an absolute time. Do not substitute the waterTbl page-generation timestamp for LastPump.site_timestamp_station.
 
-Current weather in the header is explicitly modelled Open-Meteo temperature, relative humidity and wind, never labelled station observations. Timestamps and expected units are validated. Model weather older than 90 minutes is suppressed. No operational pump/gate instructions are generated.
+A machine is running only when RTU connected, timestamp within 15 minutes, pump_statusN=1 and pump_trip_statusN=false. Trip=true is a fault. Missing, disconnected and old states are unknown. Missing machine slots beyond the published set remain unknown, not off. Gate opening is in metres per the official Station page, and suppressed when disconnected/old. Do not calculate actual discharge from count, nominal capacity or cumulative LastAmount counters. The two source namespaces retain separate IDs; no fuzzy matching to infrastructure stations is performed.
 
-Sources:
-- https://gis-portal.disaster.go.th/arcgis/rest/services/Map116/DPM_BMA_waterflow_stations_DSS/FeatureServer/2
-- https://data.go.th/dataset/water-station (V4 direct API returned HTTP 403 during verification)
-- https://open-meteo.com/en/docs
-- https://open-meteo.com/en/terms (free API for non-commercial use, no uptime guarantee; observe current request limits)
-- https://standard.thaiwater.net/glossary/api-documentation/
-- https://dds.bangkok.go.th/radar.php
-- https://dds.bangkok.go.th/cctv.php
-- https://www.rainviewer.com/api/weather-maps-api.html
-- https://www.rainviewer.com/api.html
+## Upstream water forecast
 
-Deployment: retain existing Cloudflare worker `bangkok-water-live-v4` and its workers.dev URL. Upload the entire website directory, retaining `stations.json`. This is static hosting with no build or paid server required. Source repository: https://github.com/engtsce-pixel/bangkok-water-live . Do not add a new paid resource. For public traffic beyond the free forecast provider limits, add compliant server-side caching or disable that feed pending capacity review.
+Metadata: https://fews2.hii.or.th/model-output/data_portal/metadata/hii_waterlevel.csv
+Forecast: https://fews2.hii.or.th/model-output/data_portal/hii_waterlevel/forecast/CPY014.txt
 
+CPY014 is Nuan Chawi Bridge, Pak Kret, Nonthaburi (13.9474,100.5351), published by HII FEWS and displayed by ThaiWater. This is a nearby upstream station, NOT a Bangkok canal flood or district depth forecast. The official metadata has no published Bangkok station in this set at verification. The next three consecutive hourly values are plotted in m MSL. File Last-Modified is labelled file modification time, not asserted model issuance time. Missing/unknown/future file time, files older than 24 hours or missing hourly coverage suppress the chart. No extrapolation/interpolation creates forecast values.
+
+## CCTV
+
+Official pages https://dds.bangkok.go.th/cctv1.php and cctv2.php publish /cctv-image/cctv1.jpg and cctv2.jpg. Images are loaded directly from DDS; the worker only checks HEAD metadata. Last-Modified was 28 August 2026 during this verification, so images are labelled OLD. Retrieval time is never presented as capture time. A failed image is hidden with an unavailable message. No substitute photography, proxy download or fake live badge is used.
+
+## Remaining scope
+
+A calibrated 3-hour Bangkok flood-depth/arrival/volume model and tunnel fullness data are not available from these verified feeds. The app displays provider threshold status and public forecasts separately, without inventing flood risk maps or operational instructions. Legacy config.json/core observation contract/history.js are retained for compatibility but not used by the active live adapters. There are no secrets or registered API keys in the project.

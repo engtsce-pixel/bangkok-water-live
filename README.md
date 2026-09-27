@@ -1,23 +1,23 @@
-# Bangkok Water Live V5
+# Bangkok Water Management V5 — live public sources
 
-Public dashboard: https://bangkok-water-live-v4.tum-neo.workers.dev/
+Public site: https://bangkok-water-live-v4.tum-neo.workers.dev/
 
-Static HTML/CSS/JavaScript; no build step or application server required.
+Reference-inspired dashboard with satellite/street maps, historical radar, three hourly rain forecasts, official infrastructure, published observations, real water-level history, pump-machine status, gate opening and source camera images.
 
-- BMA drainage infrastructure from DDPM GIS: 438 source records, 429 mappable records. Missing coordinates are never invented.
-- Search by station/district, district filter, pump/intake and gate layers, station details.
-- Refresh approximately every five minutes while open, with timeout handling and a manual refresh button.
-- Date-labelled official station snapshot in `stations.json` when the upstream feed is unavailable. This is infrastructure metadata, not current pump operation or water telemetry.
-- Open-Meteo hourly precipitation forecast for central Bangkok, three hourly periods, chart and table. Forecasts are not observations or flood predictions.
-- Reference-inspired dense dashboard: six metric cards, central satellite/street map, layer controls, right-side radar/forecast panels and lower chart/station/camera panels.
-- RainViewer historical radar overlay, coverage mask, 13-frame timeline when available, play/pause and frame selection. Historical radar is not forecast radar. Imagery by Esri; street map by OpenStreetMap.
-- Open-Meteo forecast at actual station reference coordinates in five districts; total/individual hourly selection and map markers. These are point forecasts, not district averages or flood risk classifications.
-- Official DDS radar and CCTV links. CCTV remains a source-link panel; no fabricated camera pictures.
-- Optional measured water-level history chart via the telemetry contract; no synthetic history or extrapolated water levels.
-- Measured rainfall and water levels remain unavailable until a verified provider endpoint is configured. No invented live values.
+## Connected sources
 
-See [INTEGRATION.md](INTEGRATION.md) for source provenance, telemetry adapter requirements, units, timestamps, quality flags and free service constraints.
+- BMA infrastructure via DDPM GIS: 438 records, 429 usable coordinates. No invented locations.
+- ThaiWater public API: Bangkok river/canal levels (m MSL), 24-hour measured rain, canal flow and road sensor reports. Latest observations older than 15 minutes are labelled old; records older than 24 hours are omitted. Provider publication is not an independent quality certification.
+- BMA weather portal: public Pump and Station data. RTU connectivity, per-machine running/stopped/trip states, provider timestamp and gate opening in metres. Disconnected or old records never appear as currently running. No commands are sent to equipment.
+- HII FEWS CPY014: three next hourly water-level model values at Nuan Chawi Bridge, Nonthaburi. Explicitly NOT a Bangkok district flood forecast. Reject incomplete or old forecast files.
+- RainViewer: historical radar timeline and coverage mask. No fabricated future radar.
+- Open-Meteo: modelled current weather and three hourly rain periods at Bangkok center and five district reference points.
+- DDS CCTV: original JPEG images with source Last-Modified age. Old images are visibly labelled; never advertised as live video.
 
-Deploy with `npx wrangler deploy` to the existing Cloudflare worker `bangkok-water-live-v4`, preserving the existing URL. The explicit `wrangler.jsonc` prevents the root runtime `config.json` from being mistaken for a Hugo project. Static assets come from the repository root; `.assetsignore` excludes repository/tooling files and Markdown documentation. The source snapshot is `stations.json`. No build command is needed.
+## Deploy
 
-Local preview: serve this directory with any static HTTP server, then open it in a browser. ES modules require HTTP rather than opening index.html as a local file.
+Run `npx wrangler deploy` with the included configuration, or commit to the connected GitHub main branch. Existing worker name and URL are retained. `worker.mjs` serves fixed read-only `/api/*` routes; other files are served directly by the ASSETS binding. No API keys, database, cron or paid add-on is required. Requests are subject to the existing Cloudflare plan quota and upstream availability. Public data JSON is cached for five minutes at the edge where available; the browser refreshes approximately every five minutes while open.
+
+See INTEGRATION.md for schemas, provenance and limits. `_headers` remains for static assets. `.assetsignore` excludes worker source and tooling from static publication.
+
+Not supplied: calibrated Bangkok-wide flood depth/arrival/volume model, tunnel percentage occupancy, measured total pump discharge, operational pump/gate commands or guaranteed live CCTV. These require additional verified data and modelling; displayed source readings are never converted into invented predictions.
