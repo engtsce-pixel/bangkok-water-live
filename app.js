@@ -1,3 +1,5 @@
+import {initOperations} from './operations.js';
+import {renderWaterHistory} from './history.js';
 import {REFRESH_MS, stations, forecastPeriods, observation, advice} from './core.mjs';
 const $ = id => document.getElementById(id);
 const text = (id, value) => { $(id).textContent = value; };
@@ -6,7 +8,7 @@ const hour = time => new Date(time).toLocaleTimeString('th-TH',{timeZone:'Asia/B
 const escape = value => String(value ?? 'ไม่ระบุ').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const GIS = 'https://gis-portal.disaster.go.th/arcgis/rest/services/Map116/DPM_BMA_waterflow_stations_DSS/FeatureServer/2/query?where=1%3D1&outFields=gp_id,gp_name,gp_type,district,gp_lat,gp_long,gp_total_capacity,gp_water_control,gp_warning,gp_critical&returnGeometry=false&resultRecordCount=2000&f=json';
 const WEATHER = 'https://api.open-meteo.com/v1/forecast?latitude=13.7563&longitude=100.5018&hourly=precipitation&forecast_days=2&timezone=Asia%2FBangkok';
-let allStations = [], markers = new Map(), map, layer, busy = false, nextRefresh = Date.now(), telemetryUrl = null, configError = false;
+let allStations = [], markers = new Map(), map, layer, street, busy = false, nextRefresh = Date.now(), telemetryUrl = null, configError = false;
 let latestForecast = null, latestObservations = null, forecastFetched = 0, stationFetched = null;
 async function json(url) {
   const controller = new AbortController(), timer = setTimeout(()=>controller.abort(),15000);
@@ -15,18 +17,19 @@ async function json(url) {
 }
 if (window.L) {
   map = L.map('map',{preferCanvas:true}).setView([13.7563,100.5018],11);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map).on('tileerror',()=>text('mapNotice','แผนที่พื้นหลังบางส่วนโหลดไม่ได้ ยังดูข้อมูลจากรายชื่อสถานีได้'));
+  street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map).on('tileerror',()=>text('mapNotice','แผนที่พื้นหลังบางส่วนโหลดไม่ได้ ยังดูข้อมูลจากรายชื่อสถานีได้'));
   layer = L.layerGroup().addTo(map);
 } else { text('map','โหลดแผนที่ไม่ได้ กรุณาตรวจการเชื่อมต่อ แล้วรีโหลดหน้าเว็บ'); }
+const operations = initOperations({map,street,json,getStations:()=>allStations});
 function details(r) {
   return `<b>${escape(r.gp_name)}</b><p>${escape(r.gp_type)} · ${escape(r.district)}</p><p>กำลังสูบตามต้นทาง: ${escape(r.gp_total_capacity)}</p><p>ระดับควบคุม: ${escape(r.gp_water_control)} · เตือน: ${escape(r.gp_warning)} · วิกฤต: ${escape(r.gp_critical)}</p><small>ค่ากายภาพตามต้นทาง หน่วย/ฐานระดับต้องยืนยันก่อนเปรียบเทียบ ไม่ใช่ระดับน้ำหรือสถานะเดินเครื่องปัจจุบัน</small>`;
 }
 function selectStation(r) { $('stationDetail').innerHTML = details(r); if(map) { map.setView([r.lat,r.lon],14); markers.get(r)?.openPopup(); } }
 function filterStations() {
   const query = $('search').value.trim().toLocaleLowerCase(), district = $('district').value;
-  const rows = allStations.filter(r=>(r.gate?$('gates').checked:$('pumps').checked) && (!district || r.district === district) && `${r.gp_name} ${r.district}`.toLocaleLowerCase().includes(query));
+  const rows = allStations.filter(r=>(String(r.gp_name).includes('อุโมงค์')?$('tunnelToggle').checked:r.gate?$('gates').checked:$('pumps').checked) && (!district || r.district === district) && `${r.gp_name} ${r.district}`.toLocaleLowerCase().includes(query));
   layer?.clearLayers(); markers.clear();
-  for(const r of rows) { if(!map) break; const color = r.gate?'#ffbb67':'#23ae95'; const marker = L.circleMarker([r.lat,r.lon],{radius:5,weight:1.5,color:'#103d47',fillColor:color,fillOpacity:.9}).addTo(layer).bindPopup(details(r)).on('click',()=>{$('stationDetail').innerHTML = details(r);}); markers.set(r,marker); }
+  for(const r of rows) { if(!map) break; const color = String(r.gp_name).includes('อุโมงค์')?'#ce77ff':r.gate?'#ffbb67':'#23ae95'; const marker = L.circleMarker([r.lat,r.lon],{radius:5,weight:1.5,color:'#103d47',fillColor:color,fillOpacity:.9}).addTo(layer).bindPopup(details(r)).on('click',()=>{$('stationDetail').innerHTML = details(r);}); markers.set(r,marker); }
   text('filterCount',`พบ ${rows.length} จาก ${allStations.length} จุด`);
   $('stationList').replaceChildren();
   for(const r of rows.slice(0,80)) { const button=document.createElement('button'); button.textContent=r.gp_name; button.addEventListener('click',()=>selectStation(r)); $('stationList').append(button); }
@@ -35,7 +38,7 @@ function filterStations() {
 }
 function setStations(rows, meta) {
   const normalized = stations(rows); if(!normalized.length) throw new Error('ไม่มีพิกัดที่ใช้ได้');
-  allStations = normalized;
+  allStations = normalized; text('infrastructureReady',`${normalized.length} จุด / ${rows.length} รายการ`);
   const selected = $('district').value;
   $('district').replaceChildren(new Option('ทุกเขต',''));
   [...new Set(allStations.map(r=>r.district).filter(Boolean))].sort().forEach(d=>$('district').add(new Option(d,d)));
@@ -65,6 +68,7 @@ async function loadForecast() {
   catch { emptyForecast('รับพยากรณ์ไม่ได้ หรือไม่มีข้อมูลครบช่วงปัจจุบัน'); }
 }
 function renderObservations() {
+  renderWaterHistory(latestObservations);
   for(const [kind,valueId,metaId] of [['waterLevel','waterValue','waterMeta'],['rainfall','rainValue','rainMeta']]) {
     const row=observation(latestObservations?.[kind],kind);
     if(!row) {text(valueId,'รอข้อมูลจริง'); text(metaId,'ไม่มีค่าที่ตรวจสอบได้'); continue;}
@@ -80,17 +84,18 @@ async function loadTelemetry() {
 }
 async function refresh() {
   if(busy) return; busy=true; $('refreshButton').disabled=true; text('overall','กำลังตรวจแหล่งข้อมูล');
-  try {await Promise.allSettled([loadStations(),loadForecast(),loadTelemetry()]);}
+  try {await Promise.allSettled([loadStations(),loadForecast(),loadTelemetry()]); await operations.refresh();}
   finally {busy=false; nextRefresh=Date.now()+REFRESH_MS; $('refreshButton').disabled=false; text('overall',navigator.onLine?'ตรวจข้อมูลแล้ว · ดูสถานะแต่ละแหล่งด้านล่าง':'ออฟไลน์ · ข้อมูลอาจไม่เป็นปัจจุบัน'); text('lastChecked',`ตรวจล่าสุด ${fmt(Date.now())}`);}
 }
-for(const id of ['search','district','pumps','gates']) $(id).addEventListener(id==='search'?'input':'change',filterStations);
-$('resetView').addEventListener('click',()=>{$('search').value='';$('district').value='';$('pumps').checked=true;$('gates').checked=true;filterStations();map?.setView([13.7563,100.5018],11);});
+for(const id of ['search','district','pumps','gates','tunnelToggle']) $(id).addEventListener(id==='search'?'input':'change',filterStations);
+$('resetView').addEventListener('click',()=>{$('search').value='';$('district').value='';$('pumps').checked=true;$('gates').checked=true;$('tunnelToggle').checked=true;filterStations();map?.setView([13.7563,100.5018],11);});
 $('refreshButton').addEventListener('click',refresh);
-function tick() {text('clock',new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'medium',timeStyle:'medium'})+' (เวลาไทย)'); text('countdown',busy?'กำลังโหลด…':`ตรวจใหม่ใน ${Math.max(0,Math.ceil((nextRefresh-Date.now())/1000))} วินาที`); if(latestForecast) {try {const rows=forecastPeriods(latestForecast); if(Date.now()-forecastFetched>15*60000) throw new Error('stale'); renderForecast(rows);} catch {emptyForecast('พยากรณ์หมดช่วงเวลาหรือเกิน 15 นาที · รอโหลดใหม่');}} if(latestObservations) renderObservations(); if(!busy && Date.now()>=nextRefresh) refresh();}
+function tick() {operations.tick();text('clock',new Date().toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'medium',timeStyle:'medium'})+' (เวลาไทย)'); text('countdown',busy?'กำลังโหลด…':`ตรวจใหม่ใน ${Math.max(0,Math.ceil((nextRefresh-Date.now())/1000))} วินาที`); if(latestForecast) {try {const rows=forecastPeriods(latestForecast); if(Date.now()-forecastFetched>15*60000) throw new Error('stale'); renderForecast(rows);} catch {emptyForecast('พยากรณ์หมดช่วงเวลาหรือเกิน 15 นาที · รอโหลดใหม่');}} if(latestObservations) renderObservations(); if(!busy && Date.now()>=nextRefresh) refresh();}
 async function start() {
   try {const cfg=await json('./config.json'); if(cfg.telemetryUrl) {const url=new URL(cfg.telemetryUrl,location.href); if(url.origin!==location.origin) throw new Error('ใช้ proxy ในโดเมนเดียวกันเท่านั้น'); telemetryUrl=url.href;}}
   catch {configError=true;}
   await refresh(); setInterval(tick,1000); document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
 }
 start();
+
 

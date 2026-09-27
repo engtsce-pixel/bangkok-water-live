@@ -37,3 +37,10 @@ export function advice(rows) {
     ? 'แบบจำลองมีฝนในช่วงที่แสดง ควรตรวจเรดาร์และสภาพเส้นทางก่อนออกเดินทาง ยังสรุปความเสี่ยงน้ำท่วมจากฝนอย่างเดียวไม่ได้'
     : 'แบบจำลองจุดนี้ไม่แสดงฝนในช่วงที่แสดง แต่ฝนเฉพาะพื้นที่และน้ำท่วมยังเกิดได้ ควรติดตามเรดาร์และประกาศจากหน่วยงาน';
 }
+export function waterHistory(rows, now=Date.now()) {
+  if(!Array.isArray(rows))return [];
+  const valid=rows.map(r=>observation(r,'waterLevel',now)).filter(r=>r&&now-r.time<=24*3600000).sort((a,b)=>a.time-b.time);
+  if(!valid.length)return [];
+  const station=valid.at(-1).station,datum=valid.at(-1).datum,seen=new Set();
+  return valid.filter(r=>{if(r.station!==station||r.datum!==datum||seen.has(r.time))return false;seen.add(r.time);return true;});
+}
