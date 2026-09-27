@@ -1,14 +1,190 @@
-const REFRESH_MS=300000;
-const BMA_API='https://data.go.th/api/3/action/datastore_search?resource_id=0d645a7e-50f4-4c4f-ad1c-19db560b29c8&limit=500';
-const map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([13.7563,100.5018],10.7);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
-const riverLayer=L.layerGroup().addTo(map), stationLayer=L.layerGroup().addTo(map);
-L.polyline([[13.94,100.50],[13.88,100.49],[13.82,100.50],[13.76,100.49],[13.70,100.51],[13.63,100.54]],{color:'#18a9ff',weight:6,opacity:.78}).addTo(riverLayer).bindTooltip('แม่น้ำเจ้าพระยา · เส้นแสดงตำแหน่งโดยสังเขป');
-const fallback=[{gp_name:'สถานีสูบน้ำพระโขนง',gp_type:'บ่อสูบน้ำ',district:'เขตคลองเตย',gp_lat:13.7085,gp_long:100.5953,gp_total_capacity:'45 35(3)+10(5)',gp_water_control:'-0.8',gp_warning:'0',gp_critical:'0.2'},{gp_name:'สถานีสูบน้ำอุโมงค์พระโขนง',gp_type:'บ่อสูบน้ำ',district:'เขตคลองเตย',gp_lat:13.7097,gp_long:100.5951,gp_total_capacity:'4 4(15)'},{gp_name:'สถานีสูบน้ำอุโมงค์บางซื่อ',gp_type:'บ่อสูบน้ำ',district:'เขตดุสิต',gp_lat:13.7994,gp_long:100.521,gp_total_capacity:'6 6(10)'},{gp_name:'ประตูระบายน้ำปิยวัชร',gp_type:'ประตูระบายน้ำ',district:'เขตคลองเตย',gp_lat:13.7096,gp_long:100.5943,gp_water_control:'-1',gp_warning:'-0.2',gp_critical:'0'}];
-function esc(v){return String(v??'-').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function drawStations(rows){stationLayer.clearLayers();let n=0;rows.forEach(r=>{const lat=Number(r.gp_lat),lon=Number(r.gp_long);if(!Number.isFinite(lat)||!Number.isFinite(lon))return;n++;const gate=String(r.gp_type||'').includes('ประตู');L.circleMarker([lat,lon],{radius:5,weight:1.5,color:gate?'#ffad32':'#24e6a1',fillColor:gate?'#ffad32':'#24e6a1',fillOpacity:.82}).addTo(stationLayer).bindPopup(`<b>${esc(r.gp_name)}</b><br>${esc(r.gp_type)} · ${esc(r.district)}<hr>Capacity: ${esc(r.gp_total_capacity)}<br>ระดับควบคุม: ${esc(r.gp_water_control)}<br>เตือน: ${esc(r.gp_warning)} · วิกฤต: ${esc(r.gp_critical)}<br><small>ข้อมูลกายภาพ Open Data กทม. ไม่ใช่สถานะเดินเครื่องสด</small>`)});return n}
-async function loadBma(){const feed=document.getElementById('feedBma');try{const res=await fetch(BMA_API,{cache:'no-store'});if(!res.ok)throw new Error('HTTP '+res.status);const j=await res.json();const rows=j?.result?.records||[];if(!rows.length)throw new Error('no records');const n=drawStations(rows);document.getElementById('stationCount').textContent=n+' จุด';document.getElementById('stationState').textContent='Open Data กทม. · โหลดสำเร็จ';feed.className='feed ok';feed.textContent='● BMA Open Data: เชื่อมสำเร็จ '+n+' จุด';setSync(true,'เชื่อม BMA Open Data สำเร็จ');}catch(e){drawStations(fallback);feed.className='feed warn';feed.textContent='● BMA Open Data: เบราว์เซอร์เชื่อมตรงไม่ได้ · แสดงจุดอ้างอิง';document.getElementById('stationState').textContent='438 รายการในชุดข้อมูล · แสดงตัวอย่างเมื่อ CORS ปิดกั้น';setSync(false,'เว็บออนไลน์ · บาง feed ต้องผ่าน API proxy');}}
-function setSync(ok,text){document.getElementById('syncDot').className='dot '+(ok?'ok':'warn');document.getElementById('syncText').textContent=text;document.getElementById('lastSync').textContent='ตรวจล่าสุด '+new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'});}
-document.getElementById('layerRiver').addEventListener('change',e=>e.target.checked?riverLayer.addTo(map):map.removeLayer(riverLayer));document.getElementById('layerStations').addEventListener('change',e=>e.target.checked?stationLayer.addTo(map):map.removeLayer(stationLayer));
-function tick(){const d=new Date();document.getElementById('clock').textContent=d.toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'medium'});const remain=Math.max(0,REFRESH_MS-(Date.now()-window.lastLoad));document.getElementById('refresh').textContent='ตรวจข้อมูลใหม่ใน '+Math.ceil(remain/60000)+' นาที'}
-window.lastLoad=Date.now();tick();setInterval(tick,1000);loadBma();setInterval(()=>{window.lastLoad=Date.now();loadBma()},REFRESH_MS);
+const REFRESH_MS = 300000;
+
+const BMA_API =
+  'https://data.go.th/api/3/action/package_search?q=สถานีสูบน้ำ';
+
+const map = L.map('map', {
+  zoomControl: true,
+  preferCanvas: true
+}).setView([13.7563, 100.5018], 10);
+
+L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }
+).addTo(map);
+
+const riverLayer = L.layerGroup().addTo(map);
+const stationLayer = L.layerGroup().addTo(map);
+
+L.polyline(
+  [
+    [13.95, 100.50],
+    [13.90, 100.49],
+    [13.85, 100.49],
+    [13.80, 100.50],
+    [13.75, 100.50],
+    [13.70, 100.51],
+    [13.65, 100.52]
+  ],
+  {
+    weight: 6,
+    opacity: 0.8
+  }
+).addTo(riverLayer);
+
+const fallback = [
+  {
+    gp_name: 'สถานีสูบน้ำพระโขนง',
+    gp_type: 'สถานีสูบน้ำ',
+    lat: 13.7107,
+    lon: 100.5945
+  },
+  {
+    gp_name: 'สถานีสูบน้ำบางซื่อ',
+    gp_type: 'สถานีสูบน้ำ',
+    lat: 13.8065,
+    lon: 100.5295
+  },
+  {
+    gp_name: 'สถานีสูบน้ำคลองตัน',
+    gp_type: 'สถานีสูบน้ำ',
+    lat: 13.7425,
+    lon: 100.5840
+  },
+  {
+    gp_name: 'สถานีสูบน้ำลาดพร้าว',
+    gp_type: 'สถานีสูบน้ำ',
+    lat: 13.8060,
+    lon: 100.6080
+  }
+];
+
+function esc(v) {
+  return String(v ?? '-')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function drawStations(rows) {
+  stationLayer.clearLayers();
+
+  rows.forEach((r) => {
+    const lat = Number(r.lat || r.latitude);
+    const lon = Number(r.lon || r.lng || r.longitude);
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+    L.circleMarker([lat, lon], {
+      radius: 6,
+      weight: 2,
+      fillOpacity: 0.85
+    })
+      .bindPopup(
+        `<b>${esc(r.gp_name || r.name || 'จุดระบายน้ำ')}</b><br>` +
+        `${esc(r.gp_type || r.type || '')}`
+      )
+      .addTo(stationLayer);
+  });
+}
+
+async function loadBma() {
+  setSync(false, 'กำลังเชื่อมต่อข้อมูล');
+
+  try {
+    const res = await fetch(BMA_API, {
+      cache: 'no-store'
+    });
+
+    if (!res.ok) throw new Error('API HTTP ' + res.status);
+
+    const data = await res.json();
+
+    /*
+      data.go.th/CKAN อาจเปลี่ยนโครงสร้างข้อมูลหรือบล็อก CORS
+      จึงไม่แสดงค่าที่ไม่สามารถยืนยันว่าเป็น telemetry จริง
+    */
+
+    if (data && data.success) {
+      setSync(
+        true,
+        'เชื่อมต่อ Open Data แล้ว · รอชุดข้อมูล Telemetry'
+      );
+    } else {
+      throw new Error('Invalid API response');
+    }
+  } catch (err) {
+    drawStations(fallback);
+
+    setSync(
+      false,
+      'แสดงจุดอ้างอิง · API ต้องผ่าน Proxy'
+    );
+
+    console.warn('BMA API:', err);
+  }
+}
+
+function setSync(ok, text) {
+  const el = document.getElementById('syncText');
+
+  if (el) {
+    el.textContent = text;
+  }
+
+  const dot = document.getElementById('syncDot');
+
+  if (dot) {
+    dot.dataset.status = ok ? 'ok' : 'warn';
+  }
+}
+
+function tick() {
+  const d = new Date();
+
+  const clock = document.getElementById('clock');
+
+  if (clock) {
+    clock.textContent = d.toLocaleString('th-TH', {
+      dateStyle: 'medium',
+      timeStyle: 'medium'
+    });
+  }
+
+  const last = document.getElementById('lastCheck');
+
+  if (last) {
+    last.textContent = d.toLocaleTimeString('th-TH', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+}
+
+const riverToggle = document.getElementById('layerRiver');
+
+if (riverToggle) {
+  riverToggle.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      riverLayer.addTo(map);
+    } else {
+      map.removeLayer(riverLayer);
+    }
+  });
+}
+
+drawStations(fallback);
+tick();
+loadBma();
+
+window.lastLoad = Date.now();
+
+setInterval(tick, 1000);
+
+setInterval(() => {
+  window.lastLoad = Date.now();
+  loadBma();
+}, REFRESH_MS);
