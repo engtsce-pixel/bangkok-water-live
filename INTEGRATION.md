@@ -45,3 +45,6 @@ Official pages https://dds.bangkok.go.th/cctv1.php and cctv2.php publish /cctv-i
 ## Remaining scope
 
 A calibrated 3-hour Bangkok flood-depth/arrival/volume model and tunnel fullness data are not available from these verified feeds. The app displays provider threshold status and public forecasts separately, without inventing flood risk maps or operational instructions. Legacy config.json/core observation contract/history.js are retained for compatibility but not used by the active live adapters. There are no secrets or registered API keys in the project.
+
+## Basin schematic supplied by user
+https://tiwrm.hii.or.th/DATA/REPORT/php/chart/chaopraya/2013/chaopraya.php is linked directly in the dashboard. The 2013 path is not an observation date: the page selected 2026-09-27 during verification, but dam dates included 2026-09-09 and Bang Sai included 2025-03-31. No undated schematic value is imported as a live reading.
