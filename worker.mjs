@@ -1,5 +1,5 @@
 const BASE='https://api-v3.thaiwater.net/api/v1/thaiwater30/public/';
-const FEEDS={water:'waterlevel_load',canal:'canal_waterlevel',rain:'rain_24h?province_code=10,11,12,13,73,74',flow:'flow',road:'flood_road'};
+const FEEDS={water:'waterlevel_load',canal:'canal_waterlevel',rain:'rain_24h?province_code=10,11,12,13,73,74',flow:'flow'};
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 async function upstream(path,ctx){
  const url=BASE+path,key=new Request(url),cache=globalThis.caches?.default,cached=await cache?.match(key);if(cached)return cached.json();
@@ -16,7 +16,15 @@ export default {async fetch(request,env,ctx){
  if(u.pathname==='/api/live'){
  const entries=await Promise.all(Object.entries(FEEDS).map(async([name,path])=>{try{return [name,await upstream(path,ctx)];}catch{return [name,{error:'แหล่งข้อมูลไม่ตอบสนอง'}];}}));return json({feeds:Object.fromEntries(entries)});
  }
+ if(u.pathname==='/api/roads'){
+ const url='https://weather.bangkok.go.th/Flood/PageMap/GetData?id=0',key=new Request(url),cache=globalThis.caches?.default,cached=await cache?.match(key);if(cached)return cached;
+ const r=await fetch(url,{signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error();const d=await r.json();if(!Array.isArray(d.dtTbl))throw Error();
+ const fields=['flood_code','flood_name','flood','districtName','latitude','longitude','site_timestamp','status','sensor','duct_sensor'];
+ const body=json({fetchedAt:new Date().toISOString(),rows:d.dtTbl.map(row=>Object.fromEntries(fields.map(k=>[k,row[k]??null])))});
+ if(cache)ctx.waitUntil(cache.put(key,new Response(body.clone().body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=300'}})));return body;
+ }
  if(u.pathname==='/api/history'){
+
  const station=u.searchParams.get('station'),type=u.searchParams.get('type');if(!/^[1-9]\d{0,8}$/.test(station||'')||!['canal','tele_waterlevel'].includes(type))return json({error:'Invalid station'},400);
  const date=t=>new Date(t+7*3600000).toISOString().slice(0,16).replace('T',' '),params=new URLSearchParams({station_type:type,station_id:station,start_date:date(Date.now()-86400000),end_date:date(Date.now())});return json(await upstream('waterlevel_graph?'+params,ctx));
  }

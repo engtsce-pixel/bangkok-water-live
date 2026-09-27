@@ -7,7 +7,8 @@ Reference-inspired dashboard with satellite/street maps, historical radar, three
 ## Connected sources
 
 - BMA infrastructure via DDPM GIS: 438 records, 429 usable coordinates. No invented locations.
-- ThaiWater public API: Bangkok river/canal levels (m MSL), 24-hour measured rain, canal flow and road sensor reports. Latest observations older than 15 minutes are labelled old; records older than 24 hours are omitted. Provider publication is not an independent quality certification.
+- ThaiWater public API: Bangkok river/canal levels (m MSL), 24-hour measured rain, canal flow. Latest observations older than 15 minutes are labelled old; records older than 24 hours are omitted. Provider publication is not an independent quality certification.
+- BMA road flood sensors: verified centimetres, source timestamps, map locations and current wet-sensor count. Faulty/disconnected sensors are omitted; no route-wide safety inference.
 - BMA weather portal: public Pump and Station data. RTU connectivity, per-machine running/stopped/trip states, provider timestamp and gate opening in metres. Disconnected or old records never appear as currently running. No commands are sent to equipment.
 - HII FEWS CPY014: three next hourly water-level model values at Nuan Chawi Bridge, Nonthaburi. Explicitly NOT a Bangkok district flood forecast. Reject incomplete or old forecast files.
 - RainViewer: historical radar timeline and coverage mask. No fabricated future radar.
